@@ -52,6 +52,7 @@
 #include "pcl/filters/voxel_grid.h"
 #include "pcl_conversions/pcl_conversions.h"
 #include "pcl/filters/passthrough.h"
+#include "pcl/filters/crop_box.h"
 // ROS
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_lifecycle/lifecycle_node.hpp"
@@ -73,7 +74,8 @@ enum class Filters
 {
   NONE = 0,
   VOXEL = 1,
-  PASSTHROUGH = 2
+  PASSTHROUGH = 2,
+  CROP_BOX = 3
 };
 
 // conveniences for line lengths

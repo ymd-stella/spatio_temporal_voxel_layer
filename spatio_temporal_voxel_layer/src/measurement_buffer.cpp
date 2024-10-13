@@ -138,12 +138,12 @@ void MeasurementBuffer::BufferROSCloud(
     }
 
     // transform the cloud in the global frame
-    point_cloud_ptr cld_global(new sensor_msgs::msg::PointCloud2());
-    geometry_msgs::msg::TransformStamped tf_stamped =
+    point_cloud_ptr cld_base(new sensor_msgs::msg::PointCloud2());
+    geometry_msgs::msg::TransformStamped tf_stamped_sensor_to_base =
       _buffer.lookupTransform(
-      _global_frame, cloud.header.frame_id,
+      "base_link", cloud.header.frame_id,
       tf2_ros::fromMsg(cloud.header.stamp));
-    tf2::doTransform(cloud, *cld_global, tf_stamped);
+    tf2::doTransform(cloud, *cld_base, tf_stamped_sensor_to_base);
 
     pcl::PCLPointCloud2::Ptr cloud_pcl(new pcl::PCLPointCloud2());
     pcl::PCLPointCloud2::Ptr cloud_filtered(new pcl::PCLPointCloud2());
@@ -151,7 +151,7 @@ void MeasurementBuffer::BufferROSCloud(
     // remove points that are below or above our height restrictions, and
     // in the same time, remove NaNs and if user wants to use it, combine with a
     if (_filter == Filters::VOXEL) {
-      pcl_conversions::toPCL(*cld_global, *cloud_pcl);
+      pcl_conversions::toPCL(*cld_base, *cloud_pcl);
       pcl::VoxelGrid<pcl::PCLPointCloud2> sor;
       sor.setInputCloud(cloud_pcl);
       sor.setFilterFieldName("z");
@@ -161,9 +161,9 @@ void MeasurementBuffer::BufferROSCloud(
       sor.setLeafSize(v_s, v_s, v_s);
       sor.setMinimumPointsNumberPerVoxel(static_cast<unsigned int>(_voxel_min_points));
       sor.filter(*cloud_filtered);
-      pcl_conversions::fromPCL(*cloud_filtered, *cld_global);
+      pcl_conversions::fromPCL(*cloud_filtered, *cld_base);
     } else if (_filter == Filters::PASSTHROUGH) {
-      pcl_conversions::toPCL(*cld_global, *cloud_pcl);
+      pcl_conversions::toPCL(*cld_base, *cloud_pcl);
       pcl::PassThrough<pcl::PCLPointCloud2> pass_through_filter;
       pass_through_filter.setInputCloud(cloud_pcl);
       pass_through_filter.setKeepOrganized(false);
@@ -171,8 +171,39 @@ void MeasurementBuffer::BufferROSCloud(
       pass_through_filter.setFilterLimits(
         _min_obstacle_height, _max_obstacle_height);
       pass_through_filter.filter(*cloud_filtered);
-      pcl_conversions::fromPCL(*cloud_filtered, *cld_global);
+      pcl_conversions::fromPCL(*cloud_filtered, *cld_base);
+    } else if (_filter == Filters::CROP_BOX) {
+      pcl_conversions::toPCL(*cld_base, *cloud_pcl);
+      pcl::PassThrough<pcl::PCLPointCloud2> pass_through_filter;
+      pass_through_filter.setInputCloud(cloud_pcl);
+      pass_through_filter.setKeepOrganized(false);
+      pass_through_filter.setFilterFieldName("z");
+      pass_through_filter.setFilterLimits(
+        _min_obstacle_height, _max_obstacle_height);
+      pass_through_filter.filter(*cloud_filtered);
+      pcl::CropBox<pcl::PCLPointCloud2> crop_box_filter1;
+      crop_box_filter1.setInputCloud(cloud_filtered);
+      crop_box_filter1.setKeepOrganized(false);
+      crop_box_filter1.setMin(Eigen::Vector4f(-0.25, -0.24, 0.0, 0));
+      crop_box_filter1.setMax(Eigen::Vector4f(0.38, 0.24, 1.0, 0));
+      crop_box_filter1.setNegative(true);
+      crop_box_filter1.filter(*cloud_filtered);
+      pcl::CropBox<pcl::PCLPointCloud2> crop_box_filter2;
+      crop_box_filter2.setInputCloud(cloud_filtered);
+      crop_box_filter2.setKeepOrganized(false);
+      crop_box_filter2.setMin(Eigen::Vector4f(0.38, -0.15, 0.0, 0));
+      crop_box_filter2.setMax(Eigen::Vector4f(0.38 + 0.15, 0.15, 0.15, 0));
+      crop_box_filter2.setNegative(true);
+      crop_box_filter2.filter(*cloud_filtered);
+      pcl_conversions::fromPCL(*cloud_filtered, *cld_base);
     }
+
+    point_cloud_ptr cld_global(new sensor_msgs::msg::PointCloud2());
+    geometry_msgs::msg::TransformStamped tf_stamped_base_to_global =
+      _buffer.lookupTransform(
+      _global_frame, "base_link",
+      tf2_ros::fromMsg(cloud.header.stamp));
+    tf2::doTransform(*cld_base, *cld_global, tf_stamped_base_to_global);
 
     _observation_list.front()._cloud.reset(cld_global.release());
   } catch (tf2::TransformException & ex) {

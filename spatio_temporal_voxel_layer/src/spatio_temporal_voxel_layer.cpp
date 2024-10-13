@@ -248,6 +248,9 @@ void SpatioTemporalVoxelLayer::onInitialize(void)
     } else if (filter_str == "voxel") {
       RCLCPP_INFO(logger_, "Voxel filter activated.");
       filter = buffer::Filters::VOXEL;
+    } else if (filter_str == "crop_box") {
+      RCLCPP_INFO(logger_, "CropBox filter activated.");
+      filter = buffer::Filters::CROP_BOX;
     } else {
       RCLCPP_INFO(logger_, "No filters activated.");
       filter = buffer::Filters::NONE;
